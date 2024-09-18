@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "API_URL: $API_URL"
-echo "API_WORKSPACE_OID: $API_WORKSPACE_OID"
+echo "RALLY_API_URL: $RALLY_API_URL"
+echo "RALLY_WORKSPACE_OID: $RALLY_WORKSPACE_OID"
 echo "DEPLOY_COMPONENT_NAME: $DEPLOY_COMPONENT_NAME"
 echo "DEPLOY_BUILD_ID: $DEPLOY_BUILD_ID"
 echo "DEPLOY_START_TIME: $DEPLOY_START_TIME"
@@ -12,18 +12,18 @@ echo "PREVIOUS_SUCCESS_BUILD_COMMIT: $PREVIOUS_SUCCESS_BUILD_COMMIT"
 echo "CURRENT_BUILD_COMMIT: $CURRENT_BUILD_COMMIT"
 echo "GIT_REPO_LOC: $GIT_REPO_LOC"
 
-if [ -z "$API_KEY" ]; then
-  echo "API_KEY is not set"
+if [ -z "$RALLY_API_KEY" ]; then
+  echo "RALLY_API_KEY is not set"
   exit 1
 fi
 
-if [ -z "$API_URL" ]; then
-  echo "API_URL is not set"
+if [ -z "$RALLY_API_URL" ]; then
+  echo "RALLY_API_URL is not set"
   exit 1
 fi
 
-if [ -z "$API_WORKSPACE_OID" ]; then
-  echo "API_WORKSPACE_OID is not set"
+if [ -z "$RALLY_WORKSPACE_OID" ]; then
+  echo "RALLY_WORKSPACE_OID is not set"
   exit 1
 fi
 
@@ -62,7 +62,7 @@ if [ -z "$GIT_REPO_LOC" ]; then
   exit 1
 fi
 
-full_api_url="$API_URL/slm/webservice/v2.0"
+full_RALLY_api_url="$RALLY_API_URL/slm/webservice/v2.0"
 
 parse_millis() {
     local ms=$1
@@ -125,13 +125,13 @@ make_vsm_deploy() {
   echo "$json" >&2
   
   response=$(curl -s \
-     -H "ZSESSIONID: $API_KEY" \
+     -H "ZSESSIONID: $RALLY_API_KEY" \
      -H 'Content-Type: application/json' \
      -X POST \
      -d "$json" \
-     "$full_api_url/vsmdeploy/create?workspace=workspace/$API_WORKSPACE_OID")
+     "$full_RALLY_api_url/vsmdeploy/create?workspace=workspace/$RALLY_WORKSPACE_OID")
   if [ $? -ne 0 ]; then
-    echo "Could not connect to $API_URL" >&2
+    echo "Could not connect to $RALLY_API_URL" >&2
     exit 1
   fi
   
@@ -174,10 +174,10 @@ make_vsm_change() {
   echo "Posting VSMChange to Insights" >&2
   echo "$json" >&2
   
-  response=$(curl -s -H "ZSESSIONID: $API_KEY" -H 'Content-Type: application/json' -X POST -d "$json" "$full_api_url/vsmchange/create?workspace=workspace/$API_WORKSPACE_OID")
+  response=$(curl -s -H "ZSESSIONID: $RALLY_API_KEY" -H 'Content-Type: application/json' -X POST -d "$json" "$full_RALLY_api_url/vsmchange/create?workspace=workspace/$RALLY_WORKSPACE_OID")
   
   if [ $? -ne 0 ]; then
-    echo "Could not connect to $API_URL" >&2
+    echo "Could not connect to $RALLY_API_URL" >&2
     exit 1
   fi
   
@@ -187,10 +187,10 @@ make_vsm_change() {
 query_component() {
     local name=$1
     local response
-    response=$(curl -s -H "ZSESSIONID: $API_KEY" "$full_api_url/vsmcomponent?query=(Name%20=%20$name)&workspace=workspace/$API_WORKSPACE_OID&fetch=ObjectID")
+    response=$(curl -s -H "ZSESSIONID: $RALLY_API_KEY" "$full_RALLY_api_url/vsmcomponent?query=(Name%20=%20$name)&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=ObjectID")
     
     if [ $? -ne 0 ]; then
-      echo "Could not connect to $API_URL" >&2
+      echo "Could not connect to $RALLY_API_URL" >&2
       exit 1
     fi
     
