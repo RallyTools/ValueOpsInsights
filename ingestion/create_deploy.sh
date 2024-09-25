@@ -49,7 +49,6 @@ fi
 
 if [ -z "$PREVIOUS_SUCCESS_BUILD_COMMIT" ]; then
   echo "PREVIOUS_SUCCESS_BUILD_COMMIT is not set"
-  exit 1
 fi
 
 if [ -z "$CURRENT_BUILD_COMMIT" ]; then
@@ -197,6 +196,25 @@ query_component() {
     echo "$response"
 }
 
+get_last_successful_deploy_revision() {
+  local component_id=$1
+  local main_revision
+  
+  response=$(curl -s -H "ZSESSIONID: $RALLY_API_KEY" "$full_RALLY_api_url/vsmdeploy?order=TimeDeployed%20desc&query=((IsSuccessful%20=%20true)%20and%20(Component%20=%20vsmcomponent/$component_id))&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=MainRevision")
+  
+  if [ $? -ne 0 ]; then
+    echo "Could not connect to $RALLY_API_URL" >&2
+    exit 1
+  fi
+  
+  main_revision=$(echo "$response" | grep -o '"MainRevision":[^,}]*' | head -1 | sed 's/.*: //')
+  main_revision="${main_revision%\"}"
+  main_revision="${main_revision#\"}"
+  
+  echo $main_revision
+}
+
+
 formatted_start_date=$(parse_millis "$DEPLOY_START_TIME")
 if [ $? -ne 0 ]; then
   echo "Could not parse start time: $DEPLOY_START_TIME"
@@ -231,6 +249,13 @@ if [ -z "$component_id" ]; then
   exit 1
 fi
 
+## Get the last successful deploy revision
+last_successful_deploy_revision=$PREVIOUS_SUCCESS_BUILD_COMMIT
+
+if [ -z "$last_successful_deploy_revision" ]; then
+  last_successful_deploy_revision=$(get_last_successful_deploy_revision "$component_id")
+fi
+
 ## Make a Deploy
 deploy_response=$(make_vsm_deploy "$DEPLOY_IS_SUCCESSFUL" "$formatted_start_date" "$formatted_end_date" "$DEPLOY_MAIN_REVISION" "$component_id" "$DEPLOY_BUILD_ID")
 
@@ -253,10 +278,11 @@ fi
 echo "Deploy created successfully"
 echo "VSMDeploy.ObjectId: $deploy_id"
 
-log_file_path="$GIT_REPO_LOC/commit_log"
+echo "Last successful deploy revision: $last_successful_deploy_revision"
 
-## Create the commit log we're going to loop over
-create_commit_log "$GIT_REPO_LOC" "$log_file_path" "$PREVIOUS_SUCCESS_BUILD_COMMIT" "$CURRENT_BUILD_COMMIT"
+# ## Create the commit log we're going to loop over
+log_file_path="$GIT_REPO_LOC/commit_log"
+create_commit_log "$GIT_REPO_LOC" "$log_file_path" "$last_successful_deploy_revision" "$CURRENT_BUILD_COMMIT"
 
 ## Loop over the commit log and make VSMChanges
 while IFS= read -r line; do
