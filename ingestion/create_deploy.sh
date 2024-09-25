@@ -207,7 +207,10 @@ get_last_successful_deploy_revision() {
     exit 1
   fi
   
+  # Parse the MainRevisions out of the response and get the first one in the list
   main_revision=$(echo "$response" | grep -o '"MainRevision":[^,}]*' | head -1 | sed 's/.*: //')
+  
+  # Remove quotes
   main_revision="${main_revision%\"}"
   main_revision="${main_revision#\"}"
   
