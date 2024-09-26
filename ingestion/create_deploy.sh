@@ -252,11 +252,19 @@ if [ -z "$component_id" ]; then
   exit 1
 fi
 
-## Get the last successful deploy revision
+## Resolve the last successful deploy revision
+# Use what was passed in
 last_successful_deploy_revision=$PREVIOUS_SUCCESS_BUILD_COMMIT
 
+# If it was null, get the last successful deploy's revision
 if [ -z "$last_successful_deploy_revision" ]; then
   last_successful_deploy_revision=$(get_last_successful_deploy_revision "$component_id")
+fi
+
+# If _that_ was null (meaning no existing successful deploys), then set it to the commit before the current_build_commit
+# Or if the last successful deploy is the same as the current build commit, then set it to the commit before the current_build_commit
+if [ -z "$last_successful_deploy_revision" ] || [ "$last_successful_deploy_revision" == "$CURRENT_BUILD_COMMIT" ]; then
+  last_successful_deploy_revision="$CURRENT_BUILD_COMMIT~1"
 fi
 
 ## Make a Deploy
