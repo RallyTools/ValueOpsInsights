@@ -4,7 +4,7 @@ VERSION=1
 NAME=$(basename $0)
 AUTHOR="Iron Will Beard"
 
-SOURCE_SYSTEM_META_DATA = "{ \\\"name\\\":\\\"${NAME}\\\",\\\"version\\\":${VERSION},\\\"author\\\":\\\"${AUTHOR}\\\" }"
+SOURCE_SYSTEM_META_DATA="{ \\\"name\\\":\\\"${NAME}\\\",\\\"version\\\":${VERSION},\\\"author\\\":\\\"${AUTHOR}\\\" }"
 
 echo "RALLY_API_URL: $RALLY_API_URL"
 echo "RALLY_WORKSPACE_OID: $RALLY_WORKSPACE_OID"
