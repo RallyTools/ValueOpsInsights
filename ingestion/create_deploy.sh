@@ -3,7 +3,7 @@
 VERSION=1
 NAME=$(basename $0)
 AUTHOR="Iron Will Beard"
-
+set -x
 SOURCE_SYSTEM_META_DATA="{ \\\"name\\\":\\\"${NAME}\\\",\\\"version\\\":${VERSION},\\\"author\\\":\\\"${AUTHOR}\\\" }"
 
 echo "RALLY_API_URL: ${RALLY_API_URL}"
@@ -86,7 +86,7 @@ parse_millis() {
 }
 
 parse_commit_log_timestamp() {
-    set -x
+
   local timestamp="$1"
 
   local formatted_date
@@ -100,7 +100,7 @@ parse_commit_log_timestamp() {
   fi
   
   echo "$formatted_date"
-  set +x
+
 }
 
 make_vsm_deploy() {
