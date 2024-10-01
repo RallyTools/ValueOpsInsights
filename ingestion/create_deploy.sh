@@ -72,9 +72,10 @@ fi
 
 full_RALLY_api_url="$RALLY_API_URL/slm/webservice/v2.0"
 
-parse_seconds() {
-    local seconds=$1
-
+parse_millis() {
+    local ms=$1
+    local seconds = "$(ms / 1000)"
+    
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
         date -r $seconds -u +"%Y-%m-%dT%H:%M:%SZ"
@@ -82,11 +83,6 @@ parse_seconds() {
         # Linux and other Unix-like systems
         date -u -d @$seconds +"%Y-%m-%dT%H:%M:%SZ"
     fi
-}
-
-parse_millis() {
-    local ms=$1
-    $(parse_seconds "$((ms / 1000))")
 }
 
 make_vsm_deploy() {
@@ -163,7 +159,7 @@ create_commit_log() {
   local to_commit=$4
   
   touch "$log_path"
-  git --git-dir="$git_repo_loc/.git" log --pretty=format:'%H %at' --date=iso "$from_commit".."$to_commit" > "$log_path"
+  git --git-dir="$git_repo_loc/.git" log --pretty=format:'%H %at000' --date=iso "$from_commit".."$to_commit" > "$log_path"
   echo >> "$log_path"
 }
 
@@ -339,7 +335,7 @@ while IFS= read -r line; do
     fi
 
     # Parse the date
-    formatted_date=$(parse_seconds "$timestamp")
+    formatted_date=$(parse_millis "$timestamp")
     
     # Make the VSMChange
     change_response=$(make_vsm_change "$commit_id" "$formatted_date" "$deploy_id" "$DEPLOY_BUILD_ID" "$DEPLOY_BUILD_URL")
