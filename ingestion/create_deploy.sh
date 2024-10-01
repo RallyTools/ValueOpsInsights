@@ -86,6 +86,7 @@ parse_millis() {
 }
 
 parse_commit_log_timestamp() {
+    set +x
   local timestamp="$1"
 
   local formatted_date
@@ -99,6 +100,7 @@ parse_commit_log_timestamp() {
   fi
   
   echo "$formatted_date"
+  set -x
 }
 
 make_vsm_deploy() {

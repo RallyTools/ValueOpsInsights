@@ -83,6 +83,7 @@ update_deploy() {
     local deploy_id=$1
     local time_deployed=$2
     local deploy_is_successful=$3
+    echo $SOURCE_SYSTEM_META_DATA
     
     json="{
         \"VSMDeploy\": {
