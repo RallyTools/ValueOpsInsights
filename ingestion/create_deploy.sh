@@ -74,7 +74,7 @@ full_RALLY_api_url="$RALLY_API_URL/slm/webservice/v2.0"
 
 parse_millis() {
     local ms=$1
-    local seconds = "$(ms / 1000)"
+    local seconds=$((ms / 1000))
     
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
