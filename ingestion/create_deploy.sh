@@ -18,7 +18,8 @@ echo "CURRENT_BUILD_COMMIT: ${CURRENT_BUILD_COMMIT}"
 echo "GIT_REPO_LOC: ${GIT_REPO_LOC}"
 echo "DEPLOY_BUILD_URL: ${DEPLOY_BUILD_URL}"
 echo "COMMIT_OVERRIDE: ${COMMIT_OVERRIDE}"
-
+#temporary
+echo "API_KEY: ${RALLY_API_KEY}"
 if [ -z "$RALLY_API_KEY" ]; then
   echo "RALLY_API_KEY is not set"
   exit 1
