@@ -18,8 +18,7 @@ echo "CURRENT_BUILD_COMMIT: ${CURRENT_BUILD_COMMIT}"
 echo "GIT_REPO_LOC: ${GIT_REPO_LOC}"
 echo "DEPLOY_BUILD_URL: ${DEPLOY_BUILD_URL}"
 echo "COMMIT_OVERRIDE: ${COMMIT_OVERRIDE}"
-#temporary
-echo "API_KEY: ${RALLY_API_KEY}"
+
 if [ -z "$RALLY_API_KEY" ]; then
   echo "RALLY_API_KEY is not set"
   exit 1
@@ -219,7 +218,7 @@ query_component() {
     echo "$response"
 }
 
-get_last_successful_deploy_revision() {
+query_last_successful_deploy_revision() {
   local component_id=$1
   local main_revision
   
@@ -240,6 +239,25 @@ get_last_successful_deploy_revision() {
   echo $main_revision
 }
 
+get_last_successful_deploy_revision() {
+  ## Resolve the last successful deploy revision
+  local component_id=$1
+  # if we got a PREVIOUS_SUCCESS_BUILD_COMMIT, use that
+  local last_successful_deploy_revision=$PREVIOUS_SUCCESS_BUILD_COMMIT
+
+  # If it was null, get the last successful deploy's revision from Rally
+  if [ -z "$last_successful_deploy_revision" ]; then
+    last_successful_deploy_revision=$(query_last_successful_deploy_revision "$component_id")
+  fi
+
+  # If _that_ was null (meaning no existing successful deploys), then set it to the commit before the current_build_commit
+  # Or if the last successful deploy is the same as the current build commit, then set it to the commit before the current_build_commit
+  if [ -z "$last_successful_deploy_revision" ] || [ "$last_successful_deploy_revision" == "$CURRENT_BUILD_COMMIT" ]; then
+    last_successful_deploy_revision="$CURRENT_BUILD_COMMIT~1"
+  fi
+
+  echo $last_successful_deploy_revision
+}
 
 formatted_start_date=$(parse_millis "$DEPLOY_START_TIME")
 if [ $? -ne 0 ]; then
@@ -276,20 +294,7 @@ if [ -z "$component_id" ]; then
 fi
 
 if [ -z "$COMMIT_OVERRIDE" ]; then
-  ## Resolve the last successful deploy revision
-  # Use what was passed in
-  last_successful_deploy_revision=$PREVIOUS_SUCCESS_BUILD_COMMIT
-
-  # If it was null, get the last successful deploy's revision
-  if [ -z "$last_successful_deploy_revision" ]; then
-    last_successful_deploy_revision=$(get_last_successful_deploy_revision "$component_id")
-  fi
-
-  # If _that_ was null (meaning no existing successful deploys), then set it to the commit before the current_build_commit
-  # Or if the last successful deploy is the same as the current build commit, then set it to the commit before the current_build_commit
-  if [ -z "$last_successful_deploy_revision" ] || [ "$last_successful_deploy_revision" == "$CURRENT_BUILD_COMMIT" ]; then
-    last_successful_deploy_revision="$CURRENT_BUILD_COMMIT~1"
-  fi
+  last_successful_deploy_revision=$(get_last_successful_deploy_revision "$component_id")
 fi
 
 ## Make a Deploy
