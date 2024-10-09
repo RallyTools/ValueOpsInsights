@@ -1,23 +1,29 @@
 #!/bin/bash
 
-echo "API_URL: $API_URL"
-echo "API_WORKSPACE_OID: $API_WORKSPACE_OID"
+VERSION=1
+NAME=$(basename $0)
+AUTHOR="Iron Will Beard"
+
+SOURCE_SYSTEM_META_DATA="{ \\\"name\\\":\\\"${NAME}\\\",\\\"version\\\":${VERSION},\\\"author\\\":\\\"${AUTHOR}\\\" }"
+
+echo "RALLY_API_URL: $RALLY_API_URL"
+echo "RALLY_WORKSPACE_OID: $RALLY_WORKSPACE_OID"
 echo "DEPLOY_BUILD_ID: $DEPLOY_BUILD_ID"
 echo "DEPLOY_END_TIME: $DEPLOY_END_TIME"
 echo "DEPLOY_IS_SUCCESSFUL: $DEPLOY_IS_SUCCESSFUL"
 
-if [ -z "$API_KEY" ]; then
-  echo "API_KEY is not set"
+if [ -z "$RALLY_API_KEY" ]; then
+  echo "RALLY_API_KEY is not set"
   exit 1
 fi
 
-if [ -z "$API_URL" ]; then
-  echo "API_URL is not set"
+if [ -z "$RALLY_API_URL" ]; then
+  echo "RALLY_API_URL is not set"
   exit 1
 fi
 
-if [ -z "$API_WORKSPACE_OID" ]; then
-  echo "API_WORKSPACE_OID is not set"
+if [ -z "$RALLY_WORKSPACE_OID" ]; then
+  echo "RALLY_WORKSPACE_OID is not set"
   exit 1
 fi
 
@@ -36,7 +42,7 @@ if [ -z "$DEPLOY_END_TIME" ]; then
   exit 1
 fi
 
-full_api_url="$API_URL/slm/webservice/v2.0"
+full_api_url="$RALLY_API_URL/slm/webservice/v2.0"
 
 parse_millis() {
     local ms=$1
@@ -54,10 +60,10 @@ parse_millis() {
 query_deploy_id() {
     local build_id=$1
     local response
-    response=$(curl -s -H "ZSESSIONID: $API_KEY" "$full_api_url/vsmdeploy?query=(BuildId%20=%20$build_id)&workspace=workspace/$API_WORKSPACE_OID&fetch=ObjectID")
+    response=$(curl -s -H "ZSESSIONID: $RALLY_API_KEY" "$full_api_url/vsmdeploy?query=(BuildId%20=%20$build_id)&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=ObjectID")
     
     if [ $? -ne 0 ]; then
-      echo "Could not connect to $API_URL" >&2
+      echo "Could not connect to $RALLY_API_URL" >&2
       exit 1
     fi
     
@@ -81,17 +87,18 @@ update_deploy() {
     json="{
         \"VSMDeploy\": {
             \"IsSuccessful\": \"$deploy_is_successful\",
-            \"TimeDeployed\": \"$time_deployed\"
+            \"TimeDeployed\": \"$time_deployed\",
+            \"SourceSystemMetaData\": \"$SOURCE_SYSTEM_META_DATA\"
         } 
     }"
     
     echo "Updating deploy in Insights"
     echo "$json"
     
-    response=$(curl -s -o /dev/null -H "ZSESSIONID: $API_KEY" -H 'Content-Type: application/json' -X POST -d "$json" "$full_api_url/vsmdeploy/$deploy_id?workspace=workspace/$API_WORKSPACE_OID")
+    response=$(curl -s -o /dev/null -H "ZSESSIONID: $RALLY_API_KEY" -H 'Content-Type: application/json' -X POST -d "$json" "$full_api_url/vsmdeploy/$deploy_id?workspace=workspace/$RALLY_WORKSPACE_OID")
     
     if [ $? -ne 0 ]; then
-        echo "Could not connect to $API_URL" >&2
+        echo "Could not connect to $RALLY_API_URL" >&2
         exit 1
     fi
     

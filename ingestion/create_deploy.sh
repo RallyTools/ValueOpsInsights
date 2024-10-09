@@ -1,16 +1,23 @@
 #!/bin/bash
 
-echo "RALLY_API_URL: $RALLY_API_URL"
-echo "RALLY_WORKSPACE_OID: $RALLY_WORKSPACE_OID"
-echo "DEPLOY_COMPONENT_NAME: $DEPLOY_COMPONENT_NAME"
-echo "DEPLOY_BUILD_ID: $DEPLOY_BUILD_ID"
-echo "DEPLOY_START_TIME: $DEPLOY_START_TIME"
-echo "DEPLOY_END_TIME: $DEPLOY_END_TIME"
-echo "DEPLOY_IS_SUCCESSFUL: $DEPLOY_IS_SUCCESSFUL"
-echo "DEPLOY_MAIN_REVISION: $DEPLOY_MAIN_REVISION"
-echo "PREVIOUS_SUCCESS_BUILD_COMMIT: $PREVIOUS_SUCCESS_BUILD_COMMIT"
-echo "CURRENT_BUILD_COMMIT: $CURRENT_BUILD_COMMIT"
-echo "GIT_REPO_LOC: $GIT_REPO_LOC"
+VERSION=1
+NAME=$(basename $0)
+AUTHOR="Iron Will Beard"
+
+SOURCE_SYSTEM_META_DATA="{ \\\"name\\\":\\\"${NAME}\\\",\\\"version\\\":${VERSION},\\\"author\\\":\\\"${AUTHOR}\\\" }"
+
+echo "RALLY_API_URL: ${RALLY_API_URL}"
+echo "RALLY_WORKSPACE_OID: ${RALLY_WORKSPACE_OID}"
+echo "DEPLOY_COMPONENT_NAME: ${DEPLOY_COMPONENT_NAME}"
+echo "DEPLOY_BUILD_ID: ${DEPLOY_BUILD_ID}"
+echo "DEPLOY_START_TIME: ${DEPLOY_START_TIME}"
+echo "DEPLOY_END_TIME: ${DEPLOY_END_TIME}"
+echo "DEPLOY_IS_SUCCESSFUL: ${DEPLOY_IS_SUCCESSFUL}"
+echo "PREVIOUS_SUCCESS_BUILD_COMMIT: ${PREVIOUS_SUCCESS_BUILD_COMMIT}"
+echo "CURRENT_BUILD_COMMIT: ${CURRENT_BUILD_COMMIT}"
+echo "GIT_REPO_LOC: ${GIT_REPO_LOC}"
+echo "DEPLOY_BUILD_URL: ${DEPLOY_BUILD_URL}"
+echo "COMMIT_OVERRIDE: ${COMMIT_OVERRIDE}"
 
 if [ -z "$RALLY_API_KEY" ]; then
   echo "RALLY_API_KEY is not set"
@@ -42,19 +49,16 @@ if [ -z "$DEPLOY_START_TIME" ]; then
   exit 1
 fi
 
-if [ -z "$DEPLOY_MAIN_REVISION" ]; then
-  echo "DEPLOY_MAIN_REVISION is not set"
-  exit 1
-fi
-
 if [ -z "$PREVIOUS_SUCCESS_BUILD_COMMIT" ]; then
   echo "PREVIOUS_SUCCESS_BUILD_COMMIT is not set"
-  exit 1
 fi
 
 if [ -z "$CURRENT_BUILD_COMMIT" ]; then
   echo "CURRENT_BUILD_COMMIT is not set"
-  exit 1
+fi
+
+if [ -z "$COMMIT_OVERRIDE" ]; then
+  echo "COMMIT_OVERRIDE is not set"
 fi
 
 if [ -z "$GIT_REPO_LOC" ]; then
@@ -62,12 +66,16 @@ if [ -z "$GIT_REPO_LOC" ]; then
   exit 1
 fi
 
+if [ -z "$DEPLOY_BUILD_URL" ]; then
+  echo "DEPLOY_BUILD_URL is not set"
+fi
+
 full_RALLY_api_url="$RALLY_API_URL/slm/webservice/v2.0"
 
 parse_millis() {
     local ms=$1
     local seconds=$((ms / 1000))
-
+    
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
         date -r $seconds -u +"%Y-%m-%dT%H:%M:%SZ"
@@ -77,31 +85,16 @@ parse_millis() {
     fi
 }
 
-parse_commit_log_timestamp() {
-  local timestamp="$1"
-
-  local formatted_date
-
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-      # macOS
-      formatted_date=$(date -j -f '%Y-%m-%d %H:%M:%S %z' "$timestamp" +'%Y-%m-%dT%H:%M:%SZ')
-  else
-      # Linux and other Unix-like systems
-      formatted_date=$(date -d "$timestamp" +'%Y-%m-%dT%H:%M:%SZ')
-  fi
-  
-  echo "$formatted_date"
-}
-
 make_vsm_deploy() {
   echo "Creating VSMDeploy" >&2
   
   local deploy_is_successful=$1
   local formatted_start_date=$2
   local formatted_end_date=$3
-  local deploy_main_revision=$4
+  local current_build_commit=$4
   local deploy_component_oid=$5
   local deploy_build_id=$6
+  local deploy_build_url=$7
   
   json="{"
   json+="\"VSMDeploy\": {"
@@ -114,8 +107,20 @@ make_vsm_deploy() {
     json+="\"TimeDeployed\": \"$formatted_end_date\","
   fi
   
+  if [ ! -z "$deploy_build_url" ]; then
+    json+="\"SourceUrl\": \"$deploy_build_url\","
+  fi
+
+  if [ ! -z "$deploy_build_id" ]; then
+    json+="\"SourceId\": \"$deploy_build_id\","
+  fi
+
+  if [ ! -z "$SOURCE_SYSTEM_META_DATA" ]; then
+    json+="\"SourceSystemMetaData\": \"$SOURCE_SYSTEM_META_DATA\","
+  fi
+
   json+="\"TimeCreated\":  \"$formatted_start_date\","
-  json+="\"MainRevision\": \"$deploy_main_revision\","
+  json+="\"MainRevision\": \"$current_build_commit\","
   json+="\"Component\":    \"vsmcomponent/$deploy_component_oid\","
   json+="\"BuildId\":      \"$deploy_build_id\""
   json+="}"
@@ -154,20 +159,36 @@ create_commit_log() {
   local to_commit=$4
   
   touch "$log_path"
-  git --git-dir="$git_repo_loc/.git" log --pretty=format:'%H %ad' --date=iso "$from_commit".."$to_commit" > "$log_path"
+  git --git-dir="$git_repo_loc/.git" log --pretty=format:'%H %at000' --date=iso "$from_commit".."$to_commit" > "$log_path"
   echo >> "$log_path"
 }
 
 make_vsm_change() {
   local commit_id=$1
-  local timestamp=$2
+  local formatted_date=$2
   local deploy_id=$3
+  local deploy_build_id=$4
+  local deploy_build_url=$5
   
   json="{
       \"VSMChange\": {
         \"Revision\":   \"$commit_id\",
         \"CommitTime\": \"$formatted_date\",
-        \"Deploy\":     \"$deploy_id\"
+        \"Deploy\":     \"$deploy_id\""
+
+  if [ ! -z "$deploy_build_url" ]; then
+    json+=", \"SourceUrl\": \"$deploy_build_url\""
+  fi
+
+  if [ ! -z "$deploy_build_id" ]; then
+    json+=", \"SourceId\": \"$deploy_build_id\""
+  fi
+
+  if [ ! -z "$SOURCE_SYSTEM_META_DATA" ]; then
+    json+=", \"SourceSystemMetaData\": \"$SOURCE_SYSTEM_META_DATA\""
+  fi
+
+  json+="
       }
     }"
     
@@ -195,6 +216,47 @@ query_component() {
     fi
     
     echo "$response"
+}
+
+query_last_successful_deploy_revision() {
+  local component_id=$1
+  local main_revision
+  
+  response=$(curl -s -H "ZSESSIONID: $RALLY_API_KEY" "$full_RALLY_api_url/vsmdeploy?order=TimeDeployed%20desc&query=((IsSuccessful%20=%20true)%20and%20(Component%20=%20vsmcomponent/$component_id))&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=MainRevision")
+  
+  if [ $? -ne 0 ]; then
+    echo "Could not connect to $RALLY_API_URL" >&2
+    exit 1
+  fi
+  
+  # Parse the MainRevisions out of the response and get the first one in the list
+  main_revision=$(echo "$response" | grep -o '"MainRevision":[^,}]*' | head -1 | sed 's/.*: //')
+  
+  # Remove quotes
+  main_revision="${main_revision%\"}"
+  main_revision="${main_revision#\"}"
+  
+  echo $main_revision
+}
+
+get_last_successful_deploy_revision() {
+  ## Resolve the last successful deploy revision
+  local component_id=$1
+  # if we got a PREVIOUS_SUCCESS_BUILD_COMMIT, use that
+  local last_successful_deploy_revision=$PREVIOUS_SUCCESS_BUILD_COMMIT
+
+  # If it was null, get the last successful deploy's revision from Rally
+  if [ -z "$last_successful_deploy_revision" ]; then
+    last_successful_deploy_revision=$(query_last_successful_deploy_revision "$component_id")
+  fi
+
+  # If _that_ was null (meaning no existing successful deploys), then set it to the commit before the current_build_commit
+  # Or if the last successful deploy is the same as the current build commit, then set it to the commit before the current_build_commit
+  if [ -z "$last_successful_deploy_revision" ] || [ "$last_successful_deploy_revision" == "$CURRENT_BUILD_COMMIT" ]; then
+    last_successful_deploy_revision="$CURRENT_BUILD_COMMIT~1"
+  fi
+
+  echo $last_successful_deploy_revision
 }
 
 formatted_start_date=$(parse_millis "$DEPLOY_START_TIME")
@@ -231,8 +293,12 @@ if [ -z "$component_id" ]; then
   exit 1
 fi
 
+if [ -z "$COMMIT_OVERRIDE" ]; then
+  last_successful_deploy_revision=$(get_last_successful_deploy_revision "$component_id")
+fi
+
 ## Make a Deploy
-deploy_response=$(make_vsm_deploy "$DEPLOY_IS_SUCCESSFUL" "$formatted_start_date" "$formatted_end_date" "$DEPLOY_MAIN_REVISION" "$component_id" "$DEPLOY_BUILD_ID")
+deploy_response=$(make_vsm_deploy "$DEPLOY_IS_SUCCESSFUL" "$formatted_start_date" "$formatted_end_date" "$CURRENT_BUILD_COMMIT" "$component_id" "$DEPLOY_BUILD_ID" "$DEPLOY_BUILD_URL")
 
 ## Exit if error
 if [ $? -ne 0 ]; then
@@ -253,10 +319,15 @@ fi
 echo "Deploy created successfully"
 echo "VSMDeploy.ObjectId: $deploy_id"
 
-log_file_path="$GIT_REPO_LOC/commit_log"
+echo "Last successful deploy revision: $last_successful_deploy_revision"
 
-## Create the commit log we're going to loop over
-create_commit_log "$GIT_REPO_LOC" "$log_file_path" "$PREVIOUS_SUCCESS_BUILD_COMMIT" "$CURRENT_BUILD_COMMIT"
+# ## Create the commit log we're going to loop over
+log_file_path="$GIT_REPO_LOC/commit_log"
+if [ -z "$COMMIT_OVERRIDE" ]; then
+  create_commit_log "$GIT_REPO_LOC" "$log_file_path" "$last_successful_deploy_revision" "$CURRENT_BUILD_COMMIT"
+else
+  echo "$COMMIT_OVERRIDE" > $log_file_path
+fi
 
 ## Loop over the commit log and make VSMChanges
 while IFS= read -r line; do
@@ -270,10 +341,10 @@ while IFS= read -r line; do
     fi
 
     # Parse the date
-    formatted_date=$(parse_commit_log_timestamp "$timestamp")
+    formatted_date=$(parse_millis "$timestamp")
     
     # Make the VSMChange
-    change_response=$(make_vsm_change "$commit_id" "$formatted_date" "$deploy_id")
+    change_response=$(make_vsm_change "$commit_id" "$formatted_date" "$deploy_id" "$DEPLOY_BUILD_ID" "$DEPLOY_BUILD_URL")
 
     # Exit if error
     if [ $? -ne 0 ]; then
