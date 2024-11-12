@@ -1,7 +1,7 @@
 #!/bin/bash
 
 VERSION=1
-NAME=$(basename $0)
+NAME=$(basename "$0")
 AUTHOR="Iron Will Beard"
 
 SOURCE_SYSTEM_META_DATA="{ \\\"name\\\":\\\"${NAME}\\\",\\\"version\\\":${VERSION},\\\"author\\\":\\\"${AUTHOR}\\\" }"
@@ -236,7 +236,7 @@ query_last_successful_deploy_revision() {
   main_revision="${main_revision%\"}"
   main_revision="${main_revision#\"}"
   
-  echo $main_revision
+  echo "$main_revision"
 }
 
 get_last_successful_deploy_revision() {
@@ -256,7 +256,7 @@ get_last_successful_deploy_revision() {
     last_successful_deploy_revision="$CURRENT_BUILD_COMMIT~1"
   fi
 
-  echo $last_successful_deploy_revision
+  echo "$last_successful_deploy_revision"
 }
 
 formatted_start_date=$(parse_millis "$DEPLOY_START_TIME")
@@ -326,11 +326,16 @@ log_file_path="$GIT_REPO_LOC/commit_log"
 if [ -z "$COMMIT_OVERRIDE" ]; then
   create_commit_log "$GIT_REPO_LOC" "$log_file_path" "$last_successful_deploy_revision" "$CURRENT_BUILD_COMMIT"
 else
-  echo "$COMMIT_OVERRIDE" > $log_file_path
+  echo "$COMMIT_OVERRIDE" > "$log_file_path"
 fi
 
 ## Loop over the commit log and make VSMChanges
 while IFS= read -r line; do
+  if [ -z "$line" ]; then
+    echo "Skipping empty line in commit log" >&2
+    continue
+  fi
+
     # Read the line
     read -r commit_id timestamp <<< "$line"
     
@@ -342,6 +347,10 @@ while IFS= read -r line; do
 
     # Parse the date
     formatted_date=$(parse_millis "$timestamp")
+
+    if [ -z "$formatted_date" ]; then
+      formatted_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    fi
     
     # Make the VSMChange
     change_response=$(make_vsm_change "$commit_id" "$formatted_date" "$deploy_id" "$DEPLOY_BUILD_ID" "$DEPLOY_BUILD_URL")
