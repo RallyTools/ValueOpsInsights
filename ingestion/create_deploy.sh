@@ -2,7 +2,7 @@
 
 VERSION=1
 NAME=$(basename "$0")
-AUTHOR="Iron Will Beard"
+AUTHOR="not-set"
 
 SOURCE_SYSTEM_META_DATA="{ \\\"name\\\":\\\"${NAME}\\\",\\\"version\\\":${VERSION},\\\"author\\\":\\\"${AUTHOR}\\\" }"
 
