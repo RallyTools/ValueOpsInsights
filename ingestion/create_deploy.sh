@@ -5,8 +5,7 @@ NAME=$(basename "$0")
 AUTHOR="not-set"
 
 SOURCE_SYSTEM_META_DATA="{ \\\"name\\\":\\\"${NAME}\\\",\\\"version\\\":${VERSION},\\\"author\\\":\\\"${AUTHOR}\\\" }"
-RALLY_API_URL="https://joel.testn.f4tech.com"
-RALLY_API_KEY="_BduoftsYRoqjBJrRG40igDVXRwQAHUuNovXeyzKHb4"
+
 echo "RALLY_API_URL: ${RALLY_API_URL}"
 echo "RALLY_WORKSPACE_OID: ${RALLY_WORKSPACE_OID}"
 echo "DEPLOY_COMPONENT_NAME: ${DEPLOY_COMPONENT_NAME}"
