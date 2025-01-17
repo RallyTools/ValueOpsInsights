@@ -234,7 +234,7 @@ query_component() {
     
     response=$(curl -s \
         -D $headers \
-        --cookie "ZSESSIONID=_BduoftsYRoqjBJrRG40igDVXRwQAHUuNovXeyzKHb4" \
+        --cookie "ZSESSIONID=$RALLY_API_KEY" \
         "$full_RALLY_api_url/vsmcomponent?query=(Name%20=%20$name)&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=ObjectID" 2> /tmp/errors$$)
     
     if [ $? -ne 0 ]; then
