@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=1
+VERSION=2
 NAME=$(basename "$0")
 AUTHOR="not-set"
 
@@ -129,8 +129,14 @@ make_vsm_deploy() {
   echo "Posting VSMDeploy to Insights" >&2
   echo "$json" >&2
   
+  echo "JSESSIONID: $JSESSIONID" >&2
+  echo "INGRESSCOOKIE: $INGRESSCOOKIE" >&2
+  
   response=$(curl -s \
-     -H "ZSESSIONID: $RALLY_API_KEY" \
+     -D /tmp/headers$$ \
+     --cookie "INGRESSCOOKIE=$INGRESSCOOKIE" \
+     --cookie "JSESSIONID=$JSESSIONID" \
+     --cookie "ZSESSIONID=$RALLY_API_KEY" \
      -H 'Content-Type: application/json' \
      -X POST \
      -d "$json" \
@@ -195,7 +201,17 @@ make_vsm_change() {
   echo "Posting VSMChange to Insights" >&2
   echo "$json" >&2
   
-  response=$(curl -s -H "ZSESSIONID: $RALLY_API_KEY" -H 'Content-Type: application/json' -X POST -d "$json" "$full_RALLY_api_url/vsmchange/create?workspace=workspace/$RALLY_WORKSPACE_OID")
+  echo "JSESSIONID: $JSESSIONID" >&2
+  echo "INGRESSCOOKIE: $INGRESSCOOKIE" >&2
+
+  response=$(curl -s \
+    -D /tmp/headers$$ \
+    --cookie "INGRESSCOOKIE=$INGRESSCOOKIE" \
+    --cookie "JSESSIONID=$JSESSIONID" \
+    --cookie "ZSESSIONID=$RALLY_API_KEY" \
+    -H 'Content-Type: application/json' \
+    -X POST -d "$json" \
+    "$full_RALLY_api_url/vsmchange/create?workspace=workspace/$RALLY_WORKSPACE_OID")
   
   if [ $? -ne 0 ]; then
     echo "Could not connect to $RALLY_API_URL" >&2
@@ -205,16 +221,27 @@ make_vsm_change() {
   echo "$response"
 }
 
+get_cookie_from_headers() {
+    local cookie
+    cookie=`grep -i "^Set-Cookie: $2" $1 | sed "s/Set-Cookie: $2=//i" | sed 's/;.*//'`
+    echo $cookie
+}
+
 query_component() {
     local name=$1
+    local headers=$2
     local response
-    response=$(curl -s -H "ZSESSIONID: $RALLY_API_KEY" "$full_RALLY_api_url/vsmcomponent?query=(Name%20=%20$name)&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=ObjectID")
+    
+    response=$(curl -s \
+        -D $headers \
+        --cookie "ZSESSIONID=$RALLY_API_KEY" \
+        "$full_RALLY_api_url/vsmcomponent?query=(Name%20=%20$name)&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=ObjectID")
     
     if [ $? -ne 0 ]; then
       echo "Could not connect to $RALLY_API_URL" >&2
       exit 1
     fi
-    
+
     echo "$response"
 }
 
@@ -222,7 +249,15 @@ query_last_successful_deploy_revision() {
   local component_id=$1
   local main_revision
   
-  response=$(curl -s -H "ZSESSIONID: $RALLY_API_KEY" "$full_RALLY_api_url/vsmdeploy?order=TimeDeployed%20desc&query=((IsSuccessful%20=%20true)%20and%20(Component%20=%20vsmcomponent/$component_id))&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=MainRevision")
+  echo "query last successful deploy revision" >&2
+  echo "JSESSIONID: $JSESSIONID" >&2
+  echo "INGRESSCOOKIE: $INGRESSCOOKIE" >&2
+
+  response=$(curl -s \
+    --cookie "INGRESSCOOKIE=$INGRESSCOOKIE" \
+    --cookie "JSESSIONID=$JSESSIONID" \
+    --cookie "ZSESSIONID=$RALLY_API_KEY" \
+    "$full_RALLY_api_url/vsmdeploy?pagesize=1&order=TimeDeployed%20desc&query=((IsSuccessful%20=%20true)%20and%20(Component%20=%20vsmcomponent/$component_id))&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=MainRevision")
   
   if [ $? -ne 0 ]; then
     echo "Could not connect to $RALLY_API_URL" >&2
@@ -237,6 +272,18 @@ query_last_successful_deploy_revision() {
   main_revision="${main_revision#\"}"
   
   echo "$main_revision"
+}
+
+test_response_headers() {
+    local jsession="`grep -i 'set-cookie: JSESSIONID' /tmp/headers$$`"
+    local ingress="`grep -i 'set-cookie: INGRESSCOOKIE' /tmp/headers$$`"
+    if [ "$jsession" != "" ]; then
+        echo "JSESSIONID reset, this may indicate a problem" >&2
+    fi
+
+    if [ "$ingress" != "" ]; then
+        echo "INGRESSCOOKIE reset, this may indicate a problem" >&2
+    fi
 }
 
 get_last_successful_deploy_revision() {
@@ -278,7 +325,16 @@ fi
 ### Script flow starts here
 
 ## Find the component by name
-component_response=$(query_component "$DEPLOY_COMPONENT_NAME")
+## Headers are written to the specified file for parsing JSESSIONID and INGRESSCOOKIE
+## for use in later wsapi requests so they are processed by the same rally node.
+headers=/tmp/headers$$
+component_response=$(query_component "$DEPLOY_COMPONENT_NAME" "$headers")
+
+JSESSIONID=$(get_cookie_from_headers "$headers" JSESSIONID)
+INGRESSCOOKIE=$(get_cookie_from_headers "$headers" INGRESSCOOKIE)
+
+echo "JSESSIONID from query: $JSESSIONID"
+echo "INGRESSCOOKIE from query: $INGRESSCOOKIE"
 
 if [ $? -ne 0 ]; then
   echo "Failed to query component in Insights"
@@ -305,6 +361,8 @@ if [ $? -ne 0 ]; then
   echo "Failed to create deploy in Insights"
   exit 1
 fi
+
+test_response_headers
 
 ## Get Deploy ID
 deploy_id=$(get_object_id_from_response "$deploy_response")
@@ -360,7 +418,9 @@ while IFS= read -r line; do
       echo "Failed to create VSMChange in Insights"
       exit 1
     fi
-    
+
+    test_response_headers
+
     # Try to extract the change id
     change_id=$(get_object_id_from_response "$change_response")
     
