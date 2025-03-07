@@ -2,30 +2,9 @@
 #
 # shift_dates on a VSMProductAnalyticsMetric or VSMOutcome's Measures and Targets forwards or backwards N days
 #
-# Required params
-# -n N                   N - a negative or positve number of days
-# -k key                 key - API_KEY to use
-# -o oid|uuid            oid or uuid of the VSMProductAnalyticsMetric or VSMOutcome of which to update the Targets and Measures
-#
-# Optional params
-# -h host                host - what host to use (default = https://rally1.rallydev.com)
-# -w workspaceOid        oid of the workspace (default = your default workspace)
-# -O                     update an VSMOutcome (default VSMProductAnalyticsMetric)
-# -B                     batch update (default one-at-a-time).  One-at-a-time has better feedback.
-#
-#ex:
-#
-# shift dates forward 1 day on the VSMProductAnalyticsMetric 812185925567 in workspace 41529001 
-# sh shift_dates.sh -h https://joel.testn.f4tech.com -n 1 -o 812185925567 -k _Pq0S7RwKSd65LZ6J8r2WILCDgg2x0hprcvyKvcakyU -w 41529001
-#
-# shift dates backward 1 day in batch mode on the VSMProductAnalyticsMetric 812185925567 in workspace 41529001 
-# sh shift_dates.sh -B -h https://joel.testn.f4tech.com -n -1 -o 812185925567 -k _Pq0S7RwKSd65LZ6J8r2WILCDgg2x0hprcvyKvcakyU -w 41529001
-#
-# shift dates forward 1 day on the VSMOutcome 818109360951 in workspace 41529001 
-# sh shift_dates.sh -O -h https://joel.testn.f4tech.com -n 1 -o 818109360951 -k _Pq0S7RwKSd65LZ6J8r2WILCDgg2x0hprcvyKvcakyU -w 41529001
 
 days=""
-oid=""
+id=""
 workspaceOid=""
 defaulthost="https://rally1.rallydev.com"
 host="$defaulthost"
@@ -33,12 +12,50 @@ instmessage="but it's either not installed or not on your PATH.  Please fix that
 workspace=""
 metricType="VSMProductAnalyticsMetric"
 batchMode=false
+pam=false
 
 hash jq 2>/dev/null || { echo >&2 "\"jq\" is required to parse and create json values, ${instmessage}"; exit 1; }
 hash curl 2>/dev/null || { echo >&2 "\"curl\" is required to make WSAPI requests to Rally, ${instmessage}"; exit 1; }
 
+usage() {
+   cat <<EOF
+
+Usage: $0 -p|-o <oid|uuid> -k <key> -n <days> [-h <host>] [-w <workspaceOid> ] [ -b ]
+
+Required:
+    -p oid|uuid                      update a VSMProductAnalyticsMetric or
+    -o oid|uuid                      update an VSMOutcome
+
+    -k key                           using <key> API_KEY
+    -n days                          move dates n days forward or backward (-days if backwards)
+
+Optional:
+    -w workspaceOid                  specify what workspace if it's not your default
+    -h host                          specify what Rally host if not http://rally1.rallydev.com
+    -b                               update in batch mode - typically faster, but with less informational logging
+
+For the given VSMProductAnalyticsMetric or VSMOutcome (-o and -p are mutually exclusive), find all their associated
+Targets and Measures and add or subtract <days> to/from their respective TargetDates and ValueTimes 
+
+ex:
+forward 1 day, on VSMProductAnalyticsMetric/812185925567, using the given api key, in workspace 41529001 
+
+    sh shift_dates.sh -n 1 -p 812185925567 -k _Pq0S7RwKSd65LZ6J8r2WILCDgg2x0hprcvyKvcakyU -w 41529001
+
+in batch mode, backward 1 day, on VSMProductAnalyticsMetric/812185925567, using the given api key, in workspace 41529001 
+
+    sh shift_dates.sh -b -n -1 -p 812185925567 -k _Pq0S7RwKSd65LZ6J8r2WILCDgg2x0hprcvyKvcakyU -w 41529001
+
+forward 1 day, on VSMOutcome/818109360951, using the given api key, in the default workspace associated with the key
+
+    sh shift_dates.sh -n 1 -o 818109360951 -k _Pq0S7RwKSd65LZ6J8r2WILCDgg2x0hprcvyKvcakyU
+
+EOF
+   exit 1
+}
+
 # Parse command-line arguments
-while getopts ":h:n:o:k:w:OB" opt; do
+while getopts ":h:n:p:o:k:w:b" opt; do
     case $opt in
         h)
             host="$OPTARG"
@@ -50,32 +67,38 @@ while getopts ":h:n:o:k:w:OB" opt; do
             days="$OPTARG"
             ;;
         o)
-            oid="$OPTARG"
+            metricType="VSMOutcome"
+            id="$OPTARG"
+            ;;
+        p)
+            pam=true 
+            id="$OPTARG"
             ;;
         w)
             workspaceOid="$OPTARG"
             ;;
-        O)
-            metricType="VsmOutcome"
-            ;;
-        B)
+        b)
             batchMode=true
             ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
-            exit 1
+            usage
             ;;
         :)
             echo "Option -$OPTARG requires an argument." >&2
-            exit 1
+            usage
             ;;
     esac
 done
 
 # Check if required arguments are provided
-if [ -z "$days" ] || [ -z "$oid" ] || [ -z "$key" ]; then
-    echo "Usage: $0 -n <number_of_days> -o <object_id|object_uuid> -k <key> [ -w <workspaceOid> ] [ -h <host> ($host) ] [ -O ] [ -B ]"
-    exit 1
+if [ -z "$days" ] || [ -z "$id" ] || [ -z "$key" ]; then
+    usage
+fi
+
+if [ "$pam" = "true" ] && [ "$metricType" = "VSMOutcome" ]; then
+    echo "-p and -o are mutually exclusive"
+    usage
 fi
 
 if [ ! -z "$workspaceOid" ]; then
@@ -91,13 +114,14 @@ fi
 # Base URL for the API
 base_url="${host}/slm/webservice/v2.0"
 
-echo "Number of days: $days"
-echo "Object ID: $oid"
-echo "Host: $host"
+#echo "Number of days: $days"
+#echo "ID:   $id"
+#echo "Host: $host"
 
 if [ -z $(echo "$host" | grep "^http") ]; then
     echo "The host parameter should start with the protocol (http:// or https://).  The default is $defaulthost"
-    exit 1
+    usage
+    #exit 1
 fi
 
 # Function to move a timestamp forward or backwards
@@ -128,10 +152,10 @@ update_time() {
 
 # Function to fetch and update measures and targets
 update() {
-    local oid="$1"
+    local id="$1"
     local days="$2"
     local collection="$3"
-    local url="$base_url/${metricType}/$oid/$collection"
+    local url="$base_url/${metricType}/$id/$collection"
     local page_size=20
     local start_index=1
     local total_results=0
@@ -153,9 +177,9 @@ update() {
     esac
 
     if [[ "$days" < 0 ]]; then
-        echo "\nSubtracting ${days#-} days from $value in $collection for /${metricType}/$oid"
+        echo "\nSubtracting ${days#-} days from $value for ${base_url}/${metricType}/$id/$collection\n"
     else
-        echo "\nAdding $days days to $value in $collection for /${metricType}/$oid"
+        echo "\nAdding $days days to $value for ${base_url}/${metricType}/$id/$collection\n"
     fi
 
     while true; do
@@ -255,8 +279,8 @@ update() {
     done
 }
 
-update "$oid" "$days" "Measures"
+update "$id" "$days" "Measures"
 
-update "$oid" "$days" "Targets"
+update "$id" "$days" "Targets"
 
 echo "Script finished."
