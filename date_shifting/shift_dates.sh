@@ -6,6 +6,7 @@
 days=""
 id=""
 workspaceOid=""
+pagesize=20
 defaulthost="https://rally1.rallydev.com"
 host="$defaulthost"
 instmessage="but it's either not installed or not on your PATH.  Please fix that and try again."
@@ -31,6 +32,7 @@ Required:
 
 Optional:
     -w workspaceOid                  specify what workspace if it's not your default
+    -s pageSize                      specify page size (20)
     -h host                          specify what Rally host if not http://rally1.rallydev.com
     -b                               update in batch mode - typically faster, but with less informational logging
 
@@ -55,7 +57,7 @@ EOF
 }
 
 # Parse command-line arguments
-while getopts ":h:n:p:o:k:w:b" opt; do
+while getopts ":h:n:p:o:k:w:s:b" opt; do
     case $opt in
         h)
             host="$OPTARG"
@@ -76,6 +78,9 @@ while getopts ":h:n:p:o:k:w:b" opt; do
             ;;
         w)
             workspaceOid="$OPTARG"
+            ;;
+        s)
+            pagesize="$OPTARG"
             ;;
         b)
             batchMode=true
@@ -156,7 +161,7 @@ update() {
     local days="$2"
     local collection="$3"
     local url="$base_url/${metricType}/$id/$collection"
-    local page_size=20
+    local page_size="$pagesize"
     local start_index=1
     local total_results=0
     export loop_count=1
