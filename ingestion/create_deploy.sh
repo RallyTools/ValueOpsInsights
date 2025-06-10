@@ -4,6 +4,10 @@ VERSION=2
 NAME=$(basename "$0")
 AUTHOR="not-set"
 
+headers_file=$(mktemp)
+log_file_path=$(mktemp)
+trap 'rm -f "$headers_file" "$log_file_path"' EXIT
+
 SOURCE_SYSTEM_META_DATA="{ \\\"name\\\":\\\"${NAME}\\\",\\\"version\\\":${VERSION},\\\"author\\\":\\\"${AUTHOR}\\\" }"
 
 echo "RALLY_API_URL: ${RALLY_API_URL}"
@@ -133,7 +137,7 @@ make_vsm_deploy() {
   echo "INGRESSCOOKIE: $INGRESSCOOKIE" >&2
   
   response=$(curl -s \
-     -D /tmp/headers$$ \
+     -D $headers_file \
      --cookie "INGRESSCOOKIE=$INGRESSCOOKIE" \
      --cookie "JSESSIONID=$JSESSIONID" \
      --cookie "ZSESSIONID=$RALLY_API_KEY" \
@@ -166,6 +170,14 @@ create_commit_log() {
   
   touch "$log_path"
   git --git-dir="$git_repo_loc/.git" log --pretty=format:'%H %at000' --date=iso "$from_commit".."$to_commit" > "$log_path"
+  if [ $? -ne 0 ]; then
+    echo "git log command failed for range: $from_commit..$to_commit, using $to_commit" >&2
+    git --git-dir="$git_repo_loc/.git" log --pretty=format:'%H %at000' --date=iso "$to_commit" | head -1 > "$log_path"
+    if [ $? -ne 0 ]; then
+      echo "git log command failed for $to_commit" >&2
+      return 1
+    fi
+  fi
   echo >> "$log_path"
 }
 
@@ -205,7 +217,7 @@ make_vsm_change() {
   echo "INGRESSCOOKIE: $INGRESSCOOKIE" >&2
 
   response=$(curl -s \
-    -D /tmp/headers$$ \
+    -D $headers_file \
     --cookie "INGRESSCOOKIE=$INGRESSCOOKIE" \
     --cookie "JSESSIONID=$JSESSIONID" \
     --cookie "ZSESSIONID=$RALLY_API_KEY" \
@@ -235,7 +247,7 @@ query_component() {
     response=$(curl -s \
         -D $headers \
         --cookie "ZSESSIONID=$RALLY_API_KEY" \
-        "$full_RALLY_api_url/vsmcomponent?query=(Name%20=%20$name)&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=ObjectID")
+        "$full_RALLY_api_url/vsmcomponent?query=(Name%20=%20%22$name%22)&workspace=workspace/$RALLY_WORKSPACE_OID&fetch=ObjectID")
     
     if [ $? -ne 0 ]; then
       echo "Could not connect to $RALLY_API_URL" >&2
@@ -275,8 +287,9 @@ query_last_successful_deploy_revision() {
 }
 
 test_response_headers() {
-    local jsession="`grep -i 'set-cookie: JSESSIONID' /tmp/headers$$`"
-    local ingress="`grep -i 'set-cookie: INGRESSCOOKIE' /tmp/headers$$`"
+    local headers_file_path=$1
+    local jsession="`grep -i 'set-cookie: JSESSIONID' "$headers_file_path"`"
+    local ingress="`grep -i 'set-cookie: INGRESSCOOKIE' "$headers_file_path"`"
     if [ "$jsession" != "" ]; then
         echo "JSESSIONID reset, this may indicate a problem" >&2
     fi
@@ -327,11 +340,10 @@ fi
 ## Find the component by name
 ## Headers are written to the specified file for parsing JSESSIONID and INGRESSCOOKIE
 ## for use in later wsapi requests so they are processed by the same rally node.
-headers=/tmp/headers$$
-component_response=$(query_component "$DEPLOY_COMPONENT_NAME" "$headers")
+component_response=$(query_component "$DEPLOY_COMPONENT_NAME" "$headers_file")
 
-JSESSIONID=$(get_cookie_from_headers "$headers" JSESSIONID)
-INGRESSCOOKIE=$(get_cookie_from_headers "$headers" INGRESSCOOKIE)
+JSESSIONID=$(get_cookie_from_headers "$headers_file" JSESSIONID)
+INGRESSCOOKIE=$(get_cookie_from_headers "$headers_file" INGRESSCOOKIE)
 
 echo "JSESSIONID from query: $JSESSIONID"
 echo "INGRESSCOOKIE from query: $INGRESSCOOKIE"
@@ -362,7 +374,7 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-test_response_headers
+test_response_headers "$headers_file"
 
 ## Get Deploy ID
 deploy_id=$(get_object_id_from_response "$deploy_response")
@@ -380,10 +392,15 @@ echo "VSMDeploy.ObjectId: $deploy_id"
 echo "Last successful deploy revision: $last_successful_deploy_revision"
 
 # ## Create the commit log we're going to loop over
-log_file_path="$GIT_REPO_LOC/commit_log"
 if [ -z "$COMMIT_OVERRIDE" ]; then
   create_commit_log "$GIT_REPO_LOC" "$log_file_path" "$last_successful_deploy_revision" "$CURRENT_BUILD_COMMIT"
+  if [ $? -ne 0 ]; then
+    echo "Failed to create commit log" >&2
+    exit 1
+  fi
 else
+  # if COMMIT_OVERRIDE is set, use that as the commit log.
+  # expected format is a list pairs of commit id and timestamp, one pair per line
   echo "$COMMIT_OVERRIDE" > "$log_file_path"
 fi
 
@@ -419,7 +436,7 @@ while IFS= read -r line; do
       exit 1
     fi
 
-    test_response_headers
+    test_response_headers "$headers_file"
 
     # Try to extract the change id
     change_id=$(get_object_id_from_response "$change_response")
